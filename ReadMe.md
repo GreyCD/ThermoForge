@@ -31,6 +31,7 @@ If you want to contribute, feel free to create a pull request.
 - Climate simulation with diurnal cycles, seasons, altitude lapse rate, and weather scaling.
 - Heat Source components (point or box) with configurable intensity, falloff, and attenuation.
 - Query functions for current temperature at any world position with given UTC.
+- EQS and Thermal Events for AI.
 - Grid previews and heat visualization in-editor.
 - Subsystem for managing sources and accessing thermal data globally.
 - Blueprint and C++ integration for gameplay-driven heat logic.
@@ -51,7 +52,9 @@ Some examples of Thermo Forge plugin in action:
 |:--------------------------------------------:|:--------------------------------------------:|
 | Seasons and weather affect level temperature with UTC-based location and seasonal shift settings. | Closed areas are automatically occluded, giving brief temporal dispersion and making interiors cooler or more insulated. |
 
-
+|      <img src="Resources/Demo7.gif" width="370"/>      |                                               <img src="Resources/Demo8.gif" width="370"/>                                               |
+|:------------------------------------------------------:|:----------------------------------------------------------------------------------------------------------------------------------------:|
+| Sources are also dynamically affected apart from bake. | A simple AI logic checking temperature and upon reaching below 10 Celcius,using AI EQS to thermal sources using baked Thermo Forge data. |
 
 ## Installation
 <img src="Resources/SS1.jpeg" alt="plugin-thermo-forge" width="830"/>
@@ -72,53 +75,86 @@ Install it like any other Unreal Engine plugin.
 <img src="Resources/SS2.jpeg" alt="plugin-thermo-forge" width="830"/>
 
 - **Project Settings**
-    - Open **Edit > Project Settings > Thermo Forge**  
-      -- Set climate defaults (winter/summer averages, day-night deltas, solar gain)  
-      -- Configure altitude lapse and sea level if needed  
-      -- Adjust permeability rules (air density, max solid density, absorption, trace channel)  
-      -- Define default grid cell size and guard cells for volumes  
-      -- Choose preview defaults (time of day, season, weather)
+    - Open **Edit > Project Settings > Thermo Forge**
+    - Set climate defaults (winter/summer averages, day-night deltas, solar gain)
+    - Configure altitude lapse and sea level if needed
+    - Adjust permeability rules (air density, max solid density, absorption, trace channel)
+    - Define default grid cell size and guard cells for volumes
+    - Choose preview defaults (time of day, season, weather)
 
 - **Thermo Forge Tab**
-    - Found under **Tools > Thermo Forge**  
-      -- **Spawn Thermal Volume**: Adds a new Thermo Forge Volume into the level  
-      -- **Add Heat Source to Selection**: Adds a ThermoForgeSource component to selected actor(s)  
-      -- **Kickstart Sampling**: Bakes geometry fields for all volumes in the level  
-      -- **Show All Previews**: Makes all grid previews visible  
-      -- **Hide All Previews**: Hides all grid previews  
-      -- **Set Mesh Insulated**: Applies the Thermo Forge insulator physical material to selected meshes
+    - Found under **Tools > Thermo Forge**
+    - **Spawn Thermal Volume**: Adds a new Thermo Forge Volume into the level
+    - **Add Heat Source to Selection**: Adds a ThermoForgeSource component to selected actor(s)
+    - **Kickstart Sampling**: Bakes geometry fields for all volumes in the level
+    - **Show All Previews**: Makes all grid previews visible
+    - **Hide All Previews**: Hides all grid previews
+    - **Set Mesh Insulated**: Applies the Thermo Forge insulator physical material to selected meshes
 
 - **Thermo Forge Volume**
-    - Place a volume in your level using the tab or manually from the class list  
-      -- Adjust **BoxExtent** to fit the area you want sampled  
-      -- Toggle **bUnbounded** to let the volume cover the entire level  
-      -- Choose grid settings (use global grid, custom cell size, grid origin mode, orientation)  
-      -- Preview options (gap size, auto-rebuild, max instances, preview material)  
-      -- Assign or inspect baked field assets (automatically generated during sampling)  
-      -- Use **Rebuild Preview Grid**, **Build Heat Preview**, or **Hide Preview** buttons in Details
+    - Place a volume in your level using the tab or manually from the class list
+    - Adjust **BoxExtent** to fit the area you want sampled
+    - Toggle **bUnbounded** to let the volume cover the entire level
+    - Choose grid settings (use global grid, custom cell size, grid origin mode, orientation)
+    - Preview options (gap size, auto-rebuild, max instances, preview material)
+    - Assign or inspect baked field assets (automatically generated during sampling)   
+    - Use **Rebuild Preview Grid**, **Build Heat Preview**, or **Hide Preview** buttons in Details
 
 - **Heat Source Component**
-    - Add to any actor using the Thermo Forge Tab or manually in the Details panel  
-      -- Toggle **Enabled** to activate/deactivate the source  
-      -- Set **Intensity (°C)** to define temperature offset at the center  
-      -- Choose **Shape**: Point (sphere) or Box (oriented)  
-      -- Configure size: **RadiusCm** for point, **BoxExtent** for box  
-      -- Pick a **Falloff** method (None, Linear, Inverse Square) for point sources  ~~~~
-      -- Toggle **AffectByOwnerScale** to scale source with the actor’s transform  
-      -- Sources are registered automatically in the World Subsystem.
+    - Add to any actor using the Thermo Forge Tab or manually in the Details panel
+    - Toggle **Enabled** to activate/deactivate the source
+    - Set **Intensity (°C)** to define temperature offset at the center
+    - Choose **Shape**: Point (sphere) or Box (oriented)
+    - Configure size: **RadiusCm** for point, **BoxExtent** for box   
+    - Pick a **Falloff** method (None, Linear, Inverse Square) for point sources
+    - Toggle **AffectByOwnerScale** to scale source with the actor’s transform   
+    - Sources are registered automatically in the World Subsystem.
+
 - **Blueprint / C++ Integration**
-    - Blueprint: Drag from Thermo Forge Subsystem to call query nodes
-    - C++: Include `ThermoForgeSubsystem.h` and use subsystem functions
+    - Blueprint: Drag from Thermo Forge Subsystem to call query nodes   
+    - C++: Include `ThermoForgeSubsystem.h` and use subsystem functions  
     - Use `OnSourcesChanged` delegate to react when new heat sources are added/removed
+
+
 ### Thermo Forge Subsystem
+- **Subsystem & Queries** 
+  - Access via **Thermo Forge Subsystem** (World Subsystem)
+  - ComputeCurrentTemperatureAt(WorldPosition, bWinter, TimeHours, WeatherAlpha) to calculate exact temperature 
+  - QueryNearestBakedGridPoint(WorldPosition, QueryTimeUTC) to get nearest baked cell info  
+  - QueryNearestBakedGridPointNow(WorldPosition) for real-time queries 
+  - Subsystem also provides helper functions for occlusion, ambient rays, and data dumping
+
 <img src="Resources/SS3.jpeg" alt="plugin-thermo-forge" width="830"/>
 
-- **Subsystem & Queries**
-    - Access via **Thermo Forge Subsystem** (World Subsystem)  
-      -- `ComputeCurrentTemperatureAt(WorldPosition, bWinter, TimeHours, WeatherAlpha)` to calculate exact temperature  
-      -- `QueryNearestBakedGridPoint(WorldPosition, QueryTimeUTC)` to get nearest baked cell info  
-      -- `QueryNearestBakedGridPointNow(WorldPosition)` for real-time queries  
-      -- Subsystem also provides helper functions for occlusion, ambient rays, and data dumping
+### Thermo Forge AI Helpers
+- ** AI EQS Test (Environment Query)**   
+  - Class: **Thermo: Temperature (°C)** (`UAIEQS_Thermal`)   
+  - Add as a test in an EQS Query asset   
+  - Filter by **Min/Max °C** to keep only points within a temperature band   
+  - Score hotter, colder, or center-of-band locations  
+
+<img src="Resources/SS4.jpeg" alt="plugin-thermo-forge" width="830"/>
+
+<img src="Resources/SS7.jpeg" alt="plugin-thermo-forge" width="830"/>
+
+- **Thermal Sense (AI Perception)**   
+  - Config: **AI Sense Thermal** (`UAISenseConfig_Thermal`)   
+  - Attach to an **AIPerceptionComponent** on your AI character
+  - Samples **ambient temperature** at the listener’s location at configurable intervals
+  - Designer options: sensing ranges, update cadences (near/mid/far), spherical or FOV cone shape
+  - Threshold (°C above ambient) defines when a stimulus is registered
+  - Supports **Line of Sight** occlusion and **Emitter Tag** filtering
+  
+<img src="Resources/SS5.jpeg" alt="plugin-thermo-forge" width="830"/>
+
+- **Thermal Events**
+  - Events appear as thermal stimuli in AI Perception
+  - Strength is mapped relative to the configured detection threshold   
+  - Supports optional **Instigator** actor and **Tag** for filtering or debugging
+  - Useful for one-shot spikes such as fires, explosions, overheating, or cold spots
+
+<img src="Resources/SS6.jpeg" alt="plugin-thermo-forge" width="830"/>
+
 
 
 ## What can I do with this plugin?
@@ -211,7 +247,6 @@ Install it like any other Unreal Engine plugin.
 
 ## Planned  Upcoming Features
 
-- AI Thermal Sense (Perception).
 - Per-volume bake queues with progress bars.
 - Time scrubber on the Heat Previews.
 - Thermal vision mode.

@@ -27,7 +27,8 @@ public class ThermoForge : ModuleRules
 			{
 				"Core",
 				"CoreUObject",
-				"Engine",
+				"Engine", 
+				"AIModule",
 			}
 
 			);
@@ -36,7 +37,12 @@ public class ThermoForge : ModuleRules
 		PrivateDependencyModuleNames.AddRange(new []
 		{
 			"Projects",
-			"RenderCore", "RHI", "DeveloperSettings"
+			"RenderCore", 
+			"RHI", 
+			"DeveloperSettings",  
+			"GameplayTags", 
+			"NavigationSystem", 
+			"GameplayTasks"
 		});
 		
 		
