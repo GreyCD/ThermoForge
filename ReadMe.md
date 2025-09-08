@@ -56,6 +56,11 @@ Some examples of Thermo Forge plugin in action:
 |:------------------------------------------------------:|:----------------------------------------------------------------------------------------------------------------------------------------:|
 | Sources are also dynamically affected apart from bake. | A simple AI logic checking temperature and upon reaching below 10 Celcius,using AI EQS to thermal sources using baked Thermo Forge data. |
 
+
+|                                                                                                                                 <img src="Resources/Demo9.gif" width="800"/>                                                                                                                                  |
+|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|
+| Dynamic Heat Reactive Material with Custom Data Channels driven the values around Thermo Forge HeatFX Component. Once it is attached the actor and material master is used, data channels drive heat aspects out of box. Lightweight usage and fully applicable to open worlds without custom gameplay logic. |
+
 ## Installation
 <img src="Resources/SS1.jpeg" alt="plugin-thermo-forge" width="830"/>
 
@@ -155,7 +160,25 @@ Install it like any other Unreal Engine plugin.
 
 <img src="Resources/SS6.jpeg" alt="plugin-thermo-forge" width="830"/>
 
+- **Heat FX Component**
 
+  - Attaches to any actor, if have a Static Mesh Component can write Heat values into Custom Primitive Data.
+  - Detects surrounding heat sources and creates events on threshold changes.
+  - Supports optional **Instigator** actor and **Tag** for filtering or debugging
+  - Useful for one-shot spikes such as fires, explosions, overheating, or cold spots.
+  - A demo material is available with plugin under Resources **/Content/ThermoForgeFX_M** graphs can read Heat, Falloff, and Distance directly via scalar/vector parameters
+  - Typical use: drive emissive color, distortion, or particle spawning based on nearby heat sources resulting in thermal reactive materials by default.
+  - Updates automatically as the owning actor or surrounding thermal field changes
+  - Debug preview available through CPD defaults (in the component inspector)
+
+If you want component to directly write custom data channels, write Component Name and check the box.
+<img src="Resources/SS8.jpeg" alt="plugin-thermo-forge" width="830"/>
+
+If you want to write custom data channels, in blueprint and material setup you can define the channels you want to write.
+<img src="Resources/SS9.jpeg" alt="plugin-thermo-forge" width="830"/>
+
+Demo material with custom data channels available under Resources **/Content/ThermoForgeFX_M**
+<img src="Resources/SS10.jpeg" alt="plugin-thermo-forge" width="830"/>
 
 ## What can I do with this plugin?
 

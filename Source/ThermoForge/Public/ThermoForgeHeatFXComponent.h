@@ -65,84 +65,84 @@ public:
 	UThermoForgeHeatFXComponent();
 
 	/** Fires whenever the internally cached heat payload changes. */
-	UPROPERTY(BlueprintAssignable, Category="Thermo|Events")
+	UPROPERTY(BlueprintAssignable, Category="ThermoForge|Events")
 	FOnHeatUpdated OnHeatUpdated;
 
 	/** Fires only when the absolute temp delta crosses ChangeThresholdC. */
-	UPROPERTY(BlueprintAssignable, Category="Thermo|Events")
+	UPROPERTY(BlueprintAssignable, Category="ThermoForge|Events")
 	FOnHeatJump OnHeatJump;
 
 	/** Fire one initial OnHeatUpdated at BeginPlay (useful to set materials immediately). */
-	UPROPERTY(EditAnywhere, Category="Thermo|Events")
+	UPROPERTY(EditAnywhere, Category="ThermoForge|Events")
 	bool bFireInitialEventOnBeginPlay = true;
 
 	/** Consider a change “big” if |ΔTemp| >= this value (°C). */
-	UPROPERTY(EditAnywhere, Category="Thermo|Events", meta=(ClampMin="0.0"))
+	UPROPERTY(EditAnywhere, Category="ThermoForge|Events", meta=(ClampMin="0.0"))
 	float ChangeThresholdC = 10.f;
 
 	/** How we choose origin. */
-	UPROPERTY(EditAnywhere, Category="Thermo|Origin")
+	UPROPERTY(EditAnywhere, Category="ThermoForge|Origin")
 	EThermoOriginMode OriginMode = EThermoOriginMode::NearestSourceActor;
 
 	/** Probe ring radius (cm) for Hottest/Coldest modes. */
-	UPROPERTY(EditAnywhere, Category="Thermo|Origin", meta=(ClampMin="10.0"))
+	UPROPERTY(EditAnywhere, Category="ThermoForge|Origin", meta=(ClampMin="10.0"))
 	float ProbeRadiusCm = 300.f;
 
 	/** Number of probe samples around the ring. */
-	UPROPERTY(EditAnywhere, Category="Thermo|Origin", meta=(ClampMin="4", ClampMax="64"))
+	UPROPERTY(EditAnywhere, Category="ThermoForge|Origin", meta=(ClampMin="4", ClampMax="64"))
 	int32 ProbeSamples = 12;
 
 	/** Update period (seconds). Also triggers on owner transform changes. */
-	UPROPERTY(EditAnywhere, Category="Thermo|Tick", meta=(ClampMin="0.02"))
+	UPROPERTY(EditAnywhere, Category="ThermoForge|Tick", meta=(ClampMin="0.02"))
 	float UpdateRateSec = 0.1f;
 	
-	UPROPERTY(EditAnywhere, Category="Thermo|CPD", meta=(AllowAnyActor))
+	UPROPERTY(EditAnywhere, Category="ThermoForge|CPD", meta=(AllowAnyActor))
 	FComponentReference OverridePrimitive;
 
 	/** Enable CPD writes into TargetPrim each update. */
-	UPROPERTY(EditAnywhere, Category="Thermo|CPD")
+	UPROPERTY(EditAnywhere, Category="ThermoForge|CPD")
 	bool bWriteCustomPrimitiveData = true;
 
 	/** First CPD float slot (we write 0..8). Reserve 9 slots in your material instance. */
-	UPROPERTY(EditAnywhere, Category="Thermo|CPD", meta=(ClampMin="0"))
+	UPROPERTY(EditAnywhere, Category="ThermoForge|CPD", meta=(ClampMin="0"))
 	int32 CPDBaseIndex = 0;
 
 	/** Authoring knob forwarded to CPD[7] (used by your material as a scaler). */
-	UPROPERTY(EditAnywhere, Category="Thermo|CPD")
+	UPROPERTY(EditAnywhere, Category="ThermoForge|CPD")
 	float DistanceIntensity = 1.f;
 
 	/** Authoring knob forwarded to CPD[8] (used by your material as a reference radius). */
-	UPROPERTY(EditAnywhere, Category="Thermo|CPD", meta=(ClampMin="0.0"))
+	UPROPERTY(EditAnywhere, Category="ThermoForge|CPD", meta=(ClampMin="0.0"))
 	float ReferenceRadiusCm = 200.f;
 
 	// --------- Runtime reads (for BP/UI/debug) ---------
 
 	/** Last sampled ambient/grid temperature at owner (°C). */
-	UPROPERTY(BlueprintReadOnly, Category="Thermo|Runtime")
+	UPROPERTY(BlueprintReadOnly, Category="ThermoForge|Runtime")
 	float TemperatureC = 0.f;
 
 	/** Direction from owner to chosen origin (unit vector; Zero if unknown). */
-	UPROPERTY(BlueprintReadOnly, Category="Thermo|Runtime")
+	UPROPERTY(BlueprintReadOnly, Category="ThermoForge|Runtime")
 	FVector HeatDirWS = FVector::ZeroVector;
 
 	/** Chosen origin position (world). */
-	UPROPERTY(BlueprintReadOnly, Category="Thermo|Runtime")
+	UPROPERTY(BlueprintReadOnly, Category="ThermoForge|Runtime")
 	FVector SourcePosWS = FVector::ZeroVector;
 
 	/** Distance (cm) from owner to origin; 0 if unknown. */
-	UPROPERTY(BlueprintReadOnly, Category="Thermo|Runtime")
+	UPROPERTY(BlueprintReadOnly, Category="ThermoForge|Runtime")
 	float DistanceCm = 0.f;
 
 	/** Strength proxy (0..∞). For NearestSourceActor it's 1/Distance; for probe modes it’s |ΔT|. */
-	UPROPERTY(BlueprintReadOnly, Category="Thermo|Runtime")
+	UPROPERTY(BlueprintReadOnly, Category="ThermoForge|Runtime")
 	float HeatStrength = 0.f;
 
 	/** Last decided origin mode (if changed at runtime). */
-	UPROPERTY(BlueprintReadOnly, Category="Thermo|Runtime")
+	UPROPERTY(BlueprintReadOnly, Category="ThermoForge|Runtime")
 	EThermoOriginMode RuntimeOriginMode = EThermoOriginMode::NearestSourceActor;
 
 	/** True if we currently have a valid origin (SourcePosWS set). */
-	UFUNCTION(BlueprintCallable, Category="Thermo|Runtime")
+	UFUNCTION(BlueprintCallable, Category="ThermoForge|Runtime")
 	bool HasOrigin() const { return bHasOrigin; }
 
 protected:

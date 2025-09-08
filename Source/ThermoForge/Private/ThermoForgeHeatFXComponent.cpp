@@ -277,20 +277,23 @@ void UThermoForgeHeatFXComponent::WriteCustomPrimitiveData()
 
 	const int32 I = CPDBaseIndex;
 
-	// [0..2] HeatDirWS
+	// [0..2] HeatDirWS  -> Direction
 	TargetPrim->SetCustomPrimitiveDataFloat(I + 0, HeatDirWS.X);
 	TargetPrim->SetCustomPrimitiveDataFloat(I + 1, HeatDirWS.Y);
 	TargetPrim->SetCustomPrimitiveDataFloat(I + 2, HeatDirWS.Z);
 
-	// [3] Strength
-	TargetPrim->SetCustomPrimitiveDataFloat(I + 3, HeatStrength);
+	// [3] Temperature   -> Temperature (used as Intensity in the MF)
+	TargetPrim->SetCustomPrimitiveDataFloat(I + 3, TemperatureC);
 
-	// [4..6] SourcePosWS (or zero if none)
+	// [4..6] SourcePosWS -> Position
 	TargetPrim->SetCustomPrimitiveDataFloat(I + 4, SourcePosWS.X);
 	TargetPrim->SetCustomPrimitiveDataFloat(I + 5, SourcePosWS.Y);
 	TargetPrim->SetCustomPrimitiveDataFloat(I + 6, SourcePosWS.Z);
 
-	// [7] intensity knob; [8] reference radius knob
-	TargetPrim->SetCustomPrimitiveDataFloat(I + 7, DistanceIntensity);
+	// [7] HeatStrength   -> HeatStrength
+	TargetPrim->SetCustomPrimitiveDataFloat(I + 7, HeatStrength);
+
+	// [8] ReferenceRadiusCm -> Radius
 	TargetPrim->SetCustomPrimitiveDataFloat(I + 8, ReferenceRadiusCm);
+
 }
