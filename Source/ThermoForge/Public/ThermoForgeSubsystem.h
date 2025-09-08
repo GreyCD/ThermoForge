@@ -84,6 +84,17 @@ public:
     UFUNCTION(BlueprintCallable, Category="ThermoForge|Query")
     FThermoForgeGridHit QueryNearestBakedGridPointNow(const FVector& WorldLocation) const;
 
+    // Compose temperature from *baked field only* (Ambient + Solar*SkyView).
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category="ThermoForge|Query")
+    float ComputeBakedOnlyTemperatureAt(const FVector& WorldPos, bool bWinter, float TimeHours, float WeatherAlpha01) const;
+
+    // Find hottest/coldest baked cell near a point within RadiusCm (searches the right volume).
+    UFUNCTION(BlueprintCallable, Category="ThermoForge|Query")
+    bool FindBakedExtremeNear(const FVector& CenterWS, float RadiusCm, bool bHottest, FThermoForgeGridHit& OutHit, const FDateTime& QueryTimeUTC) const;
+
+    // Access Settings over subsystem also
+    const UThermoForgeProjectSettings* GetSettings() const;
+
 private:
     // helpers
     float TraceAmbientRay01(const FVector& P, const FVector& Dir, float MaxLen) const;
@@ -101,7 +112,6 @@ private:
 #endif
 
     void CompactSources();
-    const UThermoForgeProjectSettings* GetSettings() const;
 
     // data
     TSet<TWeakObjectPtr<UThermoForgeSourceComponent>> SourceSet;

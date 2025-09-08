@@ -640,3 +640,180 @@ void UThermoForgeSubsystem::CompactSources()
         }
     }
 }
+
+// ThermoForgeSubsystem.cpp
+
+float UThermoForgeSubsystem::ComputeBakedOnlyTemperatureAt(const FVector& WorldPos, bool bWinter, float TimeHours, float WeatherAlpha01) const
+{
+    const UThermoForgeProjectSettings* S = GetSettings();
+    if (!S) return 0.f;
+
+    // Pick nearest baked cell (prefer containing volume).
+    FThermoForgeGridHit Best;
+    {
+        UWorld* W = GetWorld();
+        if (W)
+        {
+            bool FoundInContaining = false;
+            for (TActorIterator<AThermoForgeVolume> It(W); It; ++It)
+            {
+                const AThermoForgeVolume* Vol = *It;
+                if (!Vol || !Vol->BakedField) continue;
+                if (!VolumeContainsPoint(Vol, WorldPos)) continue;
+
+                FThermoForgeGridHit Hit;
+                if (ComputeNearestInVolume(Vol, WorldPos, Hit))
+                {
+                    if (!FoundInContaining || Hit.DistanceSq < Best.DistanceSq)
+                    {
+                        Best = Hit; FoundInContaining = true;
+                    }
+                }
+            }
+            if (!FoundInContaining)
+            {
+                for (TActorIterator<AThermoForgeVolume> It(W); It; ++It)
+                {
+                    const AThermoForgeVolume* Vol = *It;
+                    if (!Vol || !Vol->BakedField) continue;
+
+                    FThermoForgeGridHit Hit;
+                    if (ComputeNearestInVolume(Vol, WorldPos, Hit))
+                    {
+                        if (!Best.bFound || Hit.DistanceSq < Best.DistanceSq)
+                            Best = Hit;
+                    }
+                }
+            }
+        }
+    }
+
+    float Sky = 0.f;
+    if (Best.bFound && Best.Volume && Best.Volume->BakedField && Best.LinearIndex >= 0)
+        Sky = FMath::Clamp(Best.Volume->BakedField->GetSkyViewByLinearIdx(Best.LinearIndex), 0.f, 1.f);
+
+    const float AmbientC = S->GetAmbientCelsiusAt(bWinter, TimeHours, WorldPos.Z);
+    const float SolarC   = S->SolarGainScaleC * Sky * (1.f - FMath::Clamp(WeatherAlpha01, 0.f, 1.f));
+
+    return AmbientC + SolarC;
+}
+
+bool UThermoForgeSubsystem::FindBakedExtremeNear(const FVector& CenterWS, float RadiusCm, bool bHottest, FThermoForgeGridHit& OutHit, const FDateTime& QueryTimeUTC) const
+{
+    OutHit = FThermoForgeGridHit{};
+    UWorld* W = GetWorld();
+    const UThermoForgeProjectSettings* S = GetSettings();
+    if (!W || !S) return false;
+
+    // Choose the best volume (prefer containing).
+    const AThermoForgeVolume* BestVol = nullptr;
+    FThermoForgeGridHit Seed;
+    {
+        bool FoundInContaining = false;
+        for (TActorIterator<AThermoForgeVolume> It(W); It; ++It)
+        {
+            const AThermoForgeVolume* Vol = *It;
+            if (!Vol || !Vol->BakedField) continue;
+
+            if (!FoundInContaining && VolumeContainsPoint(Vol, CenterWS))
+            {
+                FThermoForgeGridHit Hit;
+                if (ComputeNearestInVolume(Vol, CenterWS, Hit))
+                {
+                    if (!BestVol || Hit.DistanceSq < Seed.DistanceSq)
+                    {
+                        BestVol = Vol; Seed = Hit; FoundInContaining = true;
+                    }
+                }
+            }
+        }
+        if (!BestVol)
+        {
+            for (TActorIterator<AThermoForgeVolume> It(W); It; ++It)
+            {
+                const AThermoForgeVolume* Vol = *It;
+                if (!Vol || !Vol->BakedField) continue;
+
+                FThermoForgeGridHit Hit;
+                if (ComputeNearestInVolume(Vol, CenterWS, Hit))
+                {
+                    if (!BestVol || Hit.DistanceSq < Seed.DistanceSq)
+                    {
+                        BestVol = Vol; Seed = Hit;
+                    }
+                }
+            }
+        }
+    }
+    if (!BestVol || !BestVol->BakedField) return false;
+
+    const UThermoForgeFieldAsset* Field = BestVol->BakedField;
+    const FIntVector D = Field->Dim;
+    if (D.X<=0 || D.Y<=0 || D.Z<=0) return false;
+
+    const float Cell = FMath::Max(1.f, Field->CellSizeCm);
+    const FTransform Frame    = Field->GetGridFrame();
+    const FTransform InvFrame = Frame.Inverse();
+
+    // Center in grid-local units
+    const FVector CenterLS = InvFrame.TransformPosition(CenterWS);
+    const FVector CenterCell = CenterLS / Cell;
+
+    const int32 cx = FMath::Clamp(FMath::FloorToInt(CenterCell.X + 0.5f), 0, D.X-1);
+    const int32 cy = FMath::Clamp(FMath::FloorToInt(CenterCell.Y + 0.5f), 0, D.Y-1);
+    const int32 cz = FMath::Clamp(FMath::FloorToInt(CenterCell.Z + 0.5f), 0, D.Z-1);
+
+    const int32 R = FMath::Clamp(FMath::CeilToInt(RadiusCm / Cell), 0, 1024);
+
+    auto Index = [&](int32 x,int32 y,int32 z){ return (z*D.Y + y)*D.X + x; };
+
+    // Use same preview knobs as before (wire real time-of-day later if needed)
+    const bool  bWinter     = false;
+    const float TimeHours   = 12.f;
+    const float WeatherAlfa = 0.3f;
+
+    float BestTemp = bHottest ? -FLT_MAX : +FLT_MAX;
+    FIntVector BestIdx = Seed.GridIndex;
+    FVector    BestPos = Seed.CellCenterWS;
+
+    for (int32 z = FMath::Max(0, cz-R); z <= FMath::Min(D.Z-1, cz+R); ++z)
+    for (int32 y = FMath::Max(0, cy-R); y <= FMath::Min(D.Y-1, cy+R); ++y)
+    for (int32 x = FMath::Max(0, cx-R); x <= FMath::Min(D.X-1, cx+R); ++x)
+    {
+        // Optionally keep spherical radius; skip if outside
+        const FVector Delta(float(x-cx), float(y-cy), float(z-cz));
+        if (Delta.SizeSquared() > float(R*R)) continue;
+
+        const int32 lin = Index(x,y,z);
+
+        // Baked-only composition: Ambient + Solar*Sky
+        const float Sky = FMath::Clamp(Field->SkyView01.IsValidIndex(lin) ? Field->SkyView01[lin] : 0.f, 0.f, 1.f);
+
+        const FVector CellCenterLS((x+0.5f)*Cell, (y+0.5f)*Cell, (z+0.5f)*Cell);
+        const FVector CellCenterWS = Frame.TransformPosition(CellCenterLS);
+
+        const float AmbientC = S->GetAmbientCelsiusAt(bWinter, TimeHours, CellCenterWS.Z);
+        const float SolarC   = S->SolarGainScaleC * Sky * (1.f - WeatherAlfa);
+        const float ThisC    = AmbientC + SolarC;
+
+        const bool bBetter = bHottest ? (ThisC > BestTemp) : (ThisC < BestTemp);
+        if (bBetter)
+        {
+            BestTemp = ThisC;
+            BestIdx  = FIntVector(x,y,z);
+            BestPos  = CellCenterWS;
+        }
+    }
+
+    OutHit.bFound       = true;
+    OutHit.Volume       = const_cast<AThermoForgeVolume*>(BestVol);
+    OutHit.GridIndex    = BestIdx;
+    OutHit.LinearIndex  = Index(BestIdx.X, BestIdx.Y, BestIdx.Z);
+    OutHit.CellCenterWS = BestPos;
+    OutHit.DistanceSq   = FVector::DistSquared(BestPos, CenterWS);
+    OutHit.CellSizeCm   = Field->CellSizeCm;
+    OutHit.QueryTimeUTC = QueryTimeUTC;
+    OutHit.CurrentTempC = BestTemp; // baked-only result
+
+    return true;
+}
