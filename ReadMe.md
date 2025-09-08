@@ -77,7 +77,6 @@ Install it like any other Unreal Engine plugin.
 - In Blueprints or C++, use the **Thermo Forge Subsystem** to query temperature at any world position
 
 ## Detailed Usage
-<img src="Resources/SS2.jpeg" alt="plugin-thermo-forge" width="830"/>
 
 - **Project Settings**
     - Open **Edit > Project Settings > Thermo Forge**
@@ -86,6 +85,8 @@ Install it like any other Unreal Engine plugin.
     - Adjust permeability rules (air density, max solid density, absorption, trace channel)
     - Define default grid cell size and guard cells for volumes
     - Choose preview defaults (time of day, season, weather)
+  
+<img src="Resources/SS11.jpeg" alt="plugin-thermo-forge" width="830"/>
 
 - **Thermo Forge Tab**
     - Found under **Tools > Thermo Forge**
@@ -95,6 +96,8 @@ Install it like any other Unreal Engine plugin.
     - **Show All Previews**: Makes all grid previews visible
     - **Hide All Previews**: Hides all grid previews
     - **Set Mesh Insulated**: Applies the Thermo Forge insulator physical material to selected meshes
+
+<img src="Resources/SS2.jpeg" alt="plugin-thermo-forge" width="830"/>
 
 - **Thermo Forge Volume**
     - Place a volume in your level using the tab or manually from the class list
