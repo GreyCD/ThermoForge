@@ -43,11 +43,11 @@ public:
 
     /** Use visibility/permeability checks when sensing through obstacles. */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Config, Category="Thermal|Occlusion")
-    bool bUseLineOfSight = false;
+    bool bUseLineOfSight = true;
 
     /** Steps along the LoS ray if doing multi-sample/permeability. */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Config, Category="Thermal|Occlusion", meta=(EditCondition="bUseLineOfSight", ClampMin="1", ClampMax="16"))
-    int32 LoSSteps = 3;
+    int32 LoSSteps = 8;
 
     /** Update cadence per LOD ring (seconds). */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Config, Category="Thermal|Update", meta=(ClampMin="0.01"))

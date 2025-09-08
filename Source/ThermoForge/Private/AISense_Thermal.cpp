@@ -1,5 +1,6 @@
 ﻿#include "AISense_Thermal.h"
 
+#include "AIController.h"
 #include "AISenseConfig_Thermal.h"
 #include "Perception/AIPerceptionSystem.h"
 #include "Perception/AIPerceptionComponent.h"
@@ -109,6 +110,33 @@ static bool HasLineOfSightMulti(UWorld& World,
     return true;
 }
 
+
+static AActor* TF_ResolveListenerActor(UAIPerceptionComponent* Comp, FVector& OutLoc, FVector& OutForward)
+{
+    OutLoc = FVector::ZeroVector;
+    OutForward = FVector::ForwardVector;
+
+    if (!Comp) return nullptr;
+    AActor* Owner = Comp->GetOwner();
+
+    // If component is on an AIController, prefer its pawn
+    if (AAIController* C = Cast<AAIController>(Owner))
+        if (APawn* P = C->GetPawn())
+        {
+            OutLoc     = P->GetActorLocation();
+            OutForward = P->GetActorForwardVector();
+            return P;
+        }
+
+    // Else use the owner directly (component on Pawn/Character, etc.)
+    if (Owner)
+    {
+        OutLoc     = Owner->GetActorLocation();
+        OutForward = Owner->GetActorForwardVector();
+    }
+    return Owner;
+}
+
 static float ChooseCadence(const UAISenseConfig_Thermal& Cfg, float DistSq)
 {
     if (DistSq <= FMath::Square(Cfg.NearRange)) return Cfg.NearUpdate;
@@ -157,6 +185,15 @@ static bool ProbeThermoRing(UWorld& World,
                 BestP = P;
                 bFound = true;
             }
+            if (Cfg.bDirectional)
+            {
+                const AActor* Owner = World.GetFirstPlayerController() ? nullptr : nullptr; 
+                const FVector Forward = Owner ? Owner->GetActorForwardVector() : FVector::ForwardVector;
+                const FVector ToP     = (P - ListenerLoc).GetSafeNormal();
+                const float   CosHalf = FMath::Cos(FMath::DegreesToRadians(Cfg.FOV));
+                if (FVector::DotProduct(Forward, ToP) < CosHalf)
+                    return; // skip sample
+            }
         }
     };
 
@@ -193,8 +230,10 @@ float UAISense_Thermal::Update()
         AActor* Owner = Comp->GetOwner();
         if (!Owner) continue;
 
-        const FVector L = Owner->GetActorLocation();
-
+        FVector L, Fwd;
+        AActor* ListenerActor = TF_ResolveListenerActor(Comp, L, Fwd);
+        if (!ListenerActor) continue;
+        
         // Probe the grid around the listener and pick the hottest visible point
         float BestTempC = -FLT_MAX;
         FVector BestLoc = L;
@@ -220,7 +259,8 @@ float UAISense_Thermal::Update()
         }
 
         // Ambient cadence per listener
-        NextInterval = FMath::Min(NextInterval, ChooseCadence(*Cfg, /*DistSq=*/0.f));
+        NextInterval = FMath::Min(NextInterval, Cfg->MidUpdate);
+
     }
 
     // ----- PROCESS QUEUED ONE-SHOT EVENTS -----
@@ -245,9 +285,9 @@ float UAISense_Thermal::Update()
                     continue;
             }
 
-            const FVector OwnerLoc = Owner->GetActorLocation();
-            const float   DistSq   = FVector::DistSquared(E.Location, OwnerLoc);
-            if (Cfg->MaxRange > 0.f && DistSq > FMath::Square(Cfg->MaxRange)) continue;
+            FVector OwnerLoc, Fwd;
+            AActor* ListenerActor = TF_ResolveListenerActor(Comp, OwnerLoc, Fwd);
+            if (!ListenerActor) continue;
 
             if (!HasLineOfSightMulti(*World, *Cfg, OwnerLoc, E.Location, { Owner, E.Instigator }))
                 continue;
@@ -275,7 +315,7 @@ float UAISense_Thermal::Update()
             Comp->RegisterStimulus(Source, Stim);
             Comp->RequestStimuliListenerUpdate();
 
-            NextInterval = FMath::Min(NextInterval, ChooseCadence(*Cfg, DistSq));
+            NextInterval = FMath::Min(NextInterval, ChooseCadence(*Cfg, Cfg->MidUpdate));
         }
     }
 
