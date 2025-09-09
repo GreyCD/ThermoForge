@@ -67,6 +67,108 @@ int32 UThermoForgeSubsystem::GetSourceCount() const
         if (W.IsValid()) ++Count;
     return Count;
 }
+// Actual Baking per volume direction bounds
+void UThermoForgeSubsystem::StartNextBake()
+{
+    // Nothing left to bake
+    if (BakeQueue.Num() == 0)
+    {
+        BakeVolume = nullptr;
+        return;
+    }
+
+    // Pop the first valid volume
+    AThermoForgeVolume* V = nullptr;
+    while (BakeQueue.Num() > 0 && !V)
+    {
+        V = BakeQueue[0].Get();
+        BakeQueue.RemoveAt(0);
+    }
+
+    // If no valid volume was found, stop
+    if (!V)
+    {
+        BakeVolume = nullptr;
+        return;
+    }
+
+    BakeVolume = V;
+
+    // Rotations and orientation of cell generation
+    const FQuat GridRot = V->GetGridFrame().GetRotation();     
+    const FVector Pivot  = V->GetActorLocation();              
+    const FTransform Frame(GridRot, Pivot);
+    
+    const FTransform InvFrame = Frame.Inverse();
+    const FBox Bounds = V->GetWorldBounds();
+    const float Cell   = V->GetEffectiveCellSize();
+
+    // Grid box in local space
+    FVector Corners[8] = {
+        FVector(Bounds.Min.X, Bounds.Min.Y, Bounds.Min.Z),
+        FVector(Bounds.Min.X, Bounds.Min.Y, Bounds.Max.Z),
+        FVector(Bounds.Min.X, Bounds.Max.Y, Bounds.Min.Z),
+        FVector(Bounds.Min.X, Bounds.Max.Y, Bounds.Max.Z),
+        FVector(Bounds.Max.X, Bounds.Min.Y, Bounds.Min.Z),
+        FVector(Bounds.Max.X, Bounds.Min.Y, Bounds.Max.Z),
+        FVector(Bounds.Max.X, Bounds.Max.Y, Bounds.Min.Z),
+        FVector(Bounds.Max.X, Bounds.Max.Y, Bounds.Max.Z),
+    };
+    FBox GridBox(ForceInit);
+    for (int i=0; i<8; ++i)
+    {
+        GridBox += InvFrame.TransformPosition(Corners[i]);
+    }
+
+    auto FloorDiv0 = [](double X, double Step)->int32 { return FMath::FloorToInt(X / Step); };
+    auto CeilDiv0  = [](double X, double Step)->int32 { return FMath::CeilToInt(X / Step); };
+
+    const int32 ix0 = FloorDiv0(GridBox.Min.X, Cell);
+    const int32 iy0 = FloorDiv0(GridBox.Min.Y, Cell);
+    const int32 iz0 = FloorDiv0(GridBox.Min.Z, Cell);
+
+    const int32 ix1 = CeilDiv0 (GridBox.Max.X, Cell) - 1;
+    const int32 iy1 = CeilDiv0 (GridBox.Max.Y, Cell) - 1;
+    const int32 iz1 = CeilDiv0 (GridBox.Max.Z, Cell) - 1;
+
+    FIntVector Dim(
+        FMath::Max(0, ix1 - ix0 + 1),
+        FMath::Max(0, iy1 - iy0 + 1),
+        FMath::Max(0, iz1 - iz0 + 1)
+    );
+
+    const int32 N  = Dim.X * Dim.Y * Dim.Z;
+    if (N <= 0) { StartNextBake(); return; }
+
+    // save state
+    BakeVolume = V;
+    BakeFrame = Frame;
+    BakeCell = Cell;
+    Bake_ix0 = ix0;
+    Bake_iy0 = iy0;
+    Bake_iz0 = iz0;
+    BakeDim = Dim;
+
+    // now compute the correct world origin of cell (ix0,iy0,iz0) in THIS volume's frame
+    BakeFieldOriginWS = Frame.TransformPosition(FVector(
+        ix0 * Cell,
+        iy0 * Cell,
+        iz0 * Cell
+    ));
+    
+    BakeTotalCells = N;
+    BakeProcessed = 0;
+
+    BakeSky.SetNumZeroed(N);
+    BakeWall.SetNumZeroed(N);
+    BakeIndoor.SetNumZeroed(N);
+
+    GetWorld()->GetTimerManager().SetTimer(BakeTimerHandle, this,
+        &UThermoForgeSubsystem::TickBake, 0.01f, true);
+
+    OnBakeProgress.Broadcast(0.f);
+}
+
 
 void UThermoForgeSubsystem::GetAllSources(TArray<UThermoForgeSourceComponent*>& OutSources) const
 {
@@ -145,7 +247,7 @@ float UThermoForgeSubsystem::OcclusionBetween(const FVector& A, const FVector& B
         static_cast<ECollisionChannel>(S->TraceChannel.GetValue()),
         Q);
 
-    if (!bHit) return 1.f; // open
+    if (!bHit) return 1.f; // open one
 
     const float rho   = TF_GetHitDensityKgM3(Hit, S);
     const float Dist  = FVector::Distance(A, B);
@@ -155,156 +257,40 @@ float UThermoForgeSubsystem::OcclusionBetween(const FVector& A, const FVector& B
     return S->DensityToPermeability(rho, Lfrac);
 }
 
-// ---- main bake: SkyView01 + WallPermeability01 (+ Indoorness01) ----
+// ---- main bake start: collect volumes and que first ----
+// Per volume creates a que, then starts process per volume and tickbake() to calculate actual cell grid.
 void UThermoForgeSubsystem::KickstartSamplingFromVolumes()
 {
     UWorld* W = GetWorld();
     const UThermoForgeProjectSettings* S = GetSettings();
     if (!W || !S) return;
 
-    // Small, deterministic hemisphere (sky openness)
-    TArray<FVector> HemiDirs;
+    // hemisphere dirs
+    BakeHemiDirs.Reset();
     {
         const FVector base[12] = {
             { 0, 0, 1}, { 0.5, 0, 0.866f}, {-0.5, 0, 0.866f}, {0, 0.5, 0.866f}, {0, -0.5, 0.866f},
             { 0.707f, 0.707f, 0}, {-0.707f, 0.707f, 0}, {0.707f,-0.707f, 0}, {-0.707f,-0.707f, 0},
             { 0.923f, 0, 0.382f}, {-0.923f, 0, 0.382f}, {0, 0.923f, 0.382f}
         };
-        HemiDirs.Append(base, UE_ARRAY_COUNT(base));
-        for (FVector& d : HemiDirs) d.Normalize();
+        BakeHemiDirs.Append(base, UE_ARRAY_COUNT(base));
+        for (FVector& d : BakeHemiDirs) d.Normalize();
     }
 
-    auto FloorDiv = [](double X, double Step, double Origin) -> int32
-    { return FMath::FloorToInt((X - Origin) / Step); };
-    auto CeilDiv = [](double X, double Step, double Origin) -> int32
-    { return FMath::CeilToInt((X - Origin) / Step); };
-
-    int32 VolumeCount = 0;
+    // collect all volumes
+    BakeQueue.Empty();
     for (TActorIterator<AThermoForgeVolume> It(W); It; ++It)
     {
-        AThermoForgeVolume* V = *It; ++VolumeCount;
-        const FTransform Frame = V->GetGridFrame();
-        const FTransform InvFrame = Frame.Inverse();
-        
-        const FBox Bounds = V->GetWorldBounds();
-        const float   Cell   = V->GetEffectiveCellSize();
-        const FVector Origin = V->GetEffectiveGridOrigin();
-
-        // Transform world AABB corners into grid space (so indices align to the rotated grid)
-        FVector Corners[8] = {
-            FVector(Bounds.Min.X, Bounds.Min.Y, Bounds.Min.Z),
-            FVector(Bounds.Min.X, Bounds.Min.Y, Bounds.Max.Z),
-            FVector(Bounds.Min.X, Bounds.Max.Y, Bounds.Min.Z),
-            FVector(Bounds.Min.X, Bounds.Max.Y, Bounds.Max.Z),
-            FVector(Bounds.Max.X, Bounds.Min.Y, Bounds.Min.Z),
-            FVector(Bounds.Max.X, Bounds.Min.Y, Bounds.Max.Z),
-            FVector(Bounds.Max.X, Bounds.Max.Y, Bounds.Min.Z),
-            FVector(Bounds.Max.X, Bounds.Max.Y, Bounds.Max.Z),
-        };
-        FBox GridBox(ForceInit);
-        for (int i=0; i<8; ++i)
-        {
-            GridBox += InvFrame.TransformPosition(Corners[i]); // world → grid (rotate & translate)
-        }
-
-        // Index range in grid space
-        auto FloorDiv0 = [](double X, double Step)->int32 { return FMath::FloorToInt(X / Step); };
-        auto CeilDiv0  = [](double X, double Step)->int32 { return FMath::CeilToInt (X / Step); };
-
-        const int32 ix0 = FloorDiv0(GridBox.Min.X, Cell);
-        const int32 iy0 = FloorDiv0(GridBox.Min.Y, Cell);
-        const int32 iz0 = FloorDiv0(GridBox.Min.Z, Cell);
-
-        const int32 ix1 = CeilDiv0 (GridBox.Max.X, Cell) - 1;
-        const int32 iy1 = CeilDiv0 (GridBox.Max.Y, Cell) - 1;
-        const int32 iz1 = CeilDiv0 (GridBox.Max.Z, Cell) - 1;
-
-        const FIntVector Dim(
-            FMath::Max(0, ix1 - ix0 + 1),
-            FMath::Max(0, iy1 - iy0 + 1),
-            FMath::Max(0, iz1 - iz0 + 1)
-        );
-
-        const int32 Nx = Dim.X, Ny = Dim.Y, Nz = Dim.Z;
-        const int32 N  = Nx * Ny * Nz;
-        if (N <= 0) continue;
-
-        // World origin of the [ix0,iy0,iz0] corner via the frame
-        const FVector FieldOriginWS = Frame.TransformPosition(FVector(ix0 * Cell, iy0 * Cell, iz0 * Cell));
-
-        auto Index = [&](int32 x,int32 y,int32 z)->int32 { return (z * Ny + y) * Nx + x; };
-
-        // Center of a cell in WORLD space: go LS → WS through the frame
-        auto Center = [&](int32 x,int32 y,int32 z)
-        {
-            const FVector CenterLS(
-                (ix0 + x + 0.5f) * Cell,
-                (iy0 + y + 0.5f) * Cell,
-                (iz0 + z + 0.5f) * Cell
-            );
-            return Frame.TransformPosition(CenterLS);
-        };
-        
-        TArray<float> Sky;   Sky.SetNumZeroed(N);
-        TArray<float> Wall;  Wall.SetNumZeroed(N);
-        TArray<float> Indoor;Indoor.SetNumZeroed(N);
-
-        const float RayLen = 100000.f; // 1km
-
-        for (int32 z=0; z<Nz; ++z)
-        for (int32 y=0; y<Ny; ++y)
-        for (int32 x=0; x<Nx; ++x)
-        {
-            const int32 idx = Index(x,y,z);
-            const FVector P = Center(x,y,z);
-
-            // Sky openness (hemisphere)
-            float openness = 0.f;
-            for (const FVector& d : HemiDirs)
-                openness += TraceAmbientRay01(P, d, RayLen);
-            openness /= (float)HemiDirs.Num();
-            openness = FMath::Clamp(openness, 0.f, 1.f);
-            Sky[idx] = openness;
-
-            // Wall permeability: average occlusion to 6 neighbor centers
-            float sumPerm = 0.f; int32 cnt = 0;
-            const int32 nx[6] = { x-1, x+1, x,   x,   x,   x   };
-            const int32 ny[6] = { y,   y,   y-1, y+1, y,   y   };
-            const int32 nz[6] = { z,   z,   z,   z,   z-1, z+1 };
-
-            for (int i=0;i<6;++i)
-            {
-                const int32 xx = nx[i], yy = ny[i], zz = nz[i];
-                if (xx<0 || yy<0 || zz<0 || xx>=Nx || yy>=Ny || zz>=Nz) continue;
-
-                const FVector Q = Center(xx,yy,zz);
-                const float perm = OcclusionBetween(P, Q, Cell); // 0..1, uses physmat density
-                sumPerm += FMath::Clamp(perm, 0.f, 1.f);
-                ++cnt;
-            }
-            const float wallPerm = (cnt>0) ? (sumPerm / cnt) : 1.f;
-            Wall[idx] = wallPerm;
-
-            // Composite indoor proxy
-            Indoor[idx] = (1.f - Sky[idx]) * (1.f - Wall[idx]);
-        }
-
-    #if WITH_EDITOR
-        if (UThermoForgeFieldAsset* Saved = CreateAndSaveFieldAsset(V, Dim, Cell, FieldOriginWS, Frame.Rotator(), Sky, Wall, Indoor))
-        {
-            V->Modify();
-            V->BakedField = Saved;
-        #if WITH_EDITORONLY_DATA
-            V->GridPreviewISM->SetVisibility(true);
-        #endif
-            V->BuildHeatPreviewFromField();
-            V->MarkPackageDirty();
-        }
-    #endif
+        AThermoForgeVolume* V = *It;
+        if (V) BakeQueue.Add(V);
     }
 
-    UE_LOG(LogTemp, Log, TEXT("[ThermoForge] KickstartSamplingFromVolumes (with wall traces): volumes=%d"), VolumeCount);
+    if (!BakeVolume.IsValid() && BakeQueue.Num() > 0)
+    {
+        StartNextBake();
+    }
 }
+
 // ---------- Public BP entry: nearest baked cell ----------
 bool UThermoForgeSubsystem::VolumeContainsPoint(const AThermoForgeVolume* Vol, const FVector& WorldLocation) const
 {
@@ -416,7 +402,7 @@ if (Best.bFound)
 {
     const UThermoForgeProjectSettings* S = GetSettings();
 
-    // Weather alpha: keep using the preview knob unless you have a live feed
+    // Weather alpha: keep using the preview knob @To do - Live Preview Time Taps here
     const float WeatherAlfa = S ? S->PreviewWeatherAlpha : 0.3f;
 
     // --- Time of day from UTC (continuous hours) ---
@@ -433,7 +419,7 @@ if (Best.bFound)
     const float SeasonAlpha01 = 0.5f * (1.0f - FMath::Cos(2.0f * PI * YearPos)); // 0→1→0 yearly
 
     // --- Compute BASELINE using the SAME season (blend winter/summer) to avoid steps ---
-    // We re-use your existing composition path for both seasons and blend:
+    // Seasons Blend
     const float BaseWinter = ComputeCurrentTemperatureAt(Best.CellCenterWS, /*bWinter=*/true , TimeHours, WeatherAlfa);
     const float BaseSummer = ComputeCurrentTemperatureAt(Best.CellCenterWS, /*bWinter=*/false, TimeHours, WeatherAlfa);
     const float BaselineTotalC = FMath::Lerp(BaseWinter, BaseSummer, SeasonAlpha01);
@@ -641,7 +627,7 @@ void UThermoForgeSubsystem::CompactSources()
     }
 }
 
-// ThermoForgeSubsystem.cpp
+
 
 float UThermoForgeSubsystem::ComputeBakedOnlyTemperatureAt(const FVector& WorldPos, bool bWinter, float TimeHours, float WeatherAlpha01) const
 {
@@ -767,7 +753,7 @@ bool UThermoForgeSubsystem::FindBakedExtremeNear(const FVector& CenterWS, float 
 
     auto Index = [&](int32 x,int32 y,int32 z){ return (z*D.Y + y)*D.X + x; };
 
-    // Use same preview knobs as before (wire real time-of-day later if needed)
+    // Preview Knobs
     const bool  bWinter     = false;
     const float TimeHours   = 12.f;
     const float WeatherAlfa = 0.3f;
@@ -780,7 +766,7 @@ bool UThermoForgeSubsystem::FindBakedExtremeNear(const FVector& CenterWS, float 
     for (int32 y = FMath::Max(0, cy-R); y <= FMath::Min(D.Y-1, cy+R); ++y)
     for (int32 x = FMath::Max(0, cx-R); x <= FMath::Min(D.X-1, cx+R); ++x)
     {
-        // Optionally keep spherical radius; skip if outside
+        // Keep spherical radius; skip if outside
         const FVector Delta(float(x-cx), float(y-cy), float(z-cz));
         if (Delta.SizeSquared() > float(R*R)) continue;
 
@@ -813,7 +799,98 @@ bool UThermoForgeSubsystem::FindBakedExtremeNear(const FVector& CenterWS, float 
     OutHit.DistanceSq   = FVector::DistSquared(BestPos, CenterWS);
     OutHit.CellSizeCm   = Field->CellSizeCm;
     OutHit.QueryTimeUTC = QueryTimeUTC;
-    OutHit.CurrentTempC = BestTemp; // baked-only result
+    OutHit.CurrentTempC = BestTemp;
 
     return true;
 }
+// bake per cell
+void UThermoForgeSubsystem::TickBake()
+{
+    if (!BakeVolume.IsValid() || BakeTotalCells <= 0)
+    {
+        GetWorld()->GetTimerManager().ClearTimer(BakeTimerHandle);
+        return;
+    }
+
+    const int32 Nx = BakeDim.X, Ny = BakeDim.Y, Nz = BakeDim.Z;
+    const float RayLen = 100000.f;
+    const int32 BatchSize = 500;
+
+    for (int32 step=0; step<BatchSize && BakeProcessed < BakeTotalCells; ++step)
+    {
+        const int32 idx = BakeProcessed++;
+        const int32 z = idx / (Nx * Ny);
+        const int32 y = (idx / Nx) % Ny;
+        const int32 x = idx % Nx;
+
+        const FVector CenterLS(
+            (Bake_ix0 + x + 0.5f) * BakeCell,
+            (Bake_iy0 + y + 0.5f) * BakeCell,
+            (Bake_iz0 + z + 0.5f) * BakeCell
+        );
+        const FVector P = BakeFrame.TransformPosition(CenterLS);
+
+        // Sky openness
+        float openness = 0.f;
+        for (const FVector& d : BakeHemiDirs)
+            openness += TraceAmbientRay01(P, d, RayLen);
+        openness /= (float)BakeHemiDirs.Num();
+        BakeSky[idx] = FMath::Clamp(openness, 0.f, 1.f);
+
+        // Wall permeability
+        float sumPerm = 0.f; int32 cnt = 0;
+        const int32 nx[6] = { x-1, x+1, x,   x,   x,   x   };
+        const int32 ny[6] = { y,   y,   y-1, y+1, y,   y   };
+        const int32 nz[6] = { z,   z,   z,   z,   z-1, z+1 };
+
+        for (int i=0;i<6;++i)
+        {
+            const int32 xx = nx[i], yy = ny[i], zz = nz[i];
+            if (xx<0 || yy<0 || zz<0 || xx>=Nx || yy>=Ny || zz>=Nz) continue;
+
+            const FVector NeighborLS(
+                (Bake_ix0 + xx + 0.5f) * BakeCell,
+                (Bake_iy0 + yy + 0.5f) * BakeCell,
+                (Bake_iz0 + zz + 0.5f) * BakeCell
+            );
+            const FVector Q = BakeFrame.TransformPosition(NeighborLS);
+
+            const float perm = OcclusionBetween(P, Q, BakeCell);
+            sumPerm += FMath::Clamp(perm, 0.f, 1.f);
+            ++cnt;
+        }
+        const float wallPerm = (cnt>0) ? (sumPerm / cnt) : 1.f;
+        BakeWall[idx] = wallPerm;
+
+        BakeIndoor[idx] = (1.f - BakeSky[idx]) * (1.f - BakeWall[idx]);
+    }
+
+    float Alpha = float(BakeProcessed) / float(BakeTotalCells);
+    OnBakeProgress.Broadcast(Alpha);
+
+    if (BakeProcessed >= BakeTotalCells)
+    {
+        GetWorld()->GetTimerManager().ClearTimer(BakeTimerHandle);
+        // This a fallback to close progress
+        OnBakeProgress.Broadcast(1.f);
+
+#if WITH_EDITOR
+        if (UThermoForgeFieldAsset* Saved = CreateAndSaveFieldAsset(
+            BakeVolume.Get(), BakeDim, BakeCell,
+            BakeFieldOriginWS, BakeFrame.Rotator(),
+            BakeSky, BakeWall, BakeIndoor))
+        {
+            BakeVolume->Modify();
+            BakeVolume->BakedField = Saved;
+        #if WITH_EDITORONLY_DATA
+            BakeVolume->GridPreviewISM->SetVisibility(true);
+        #endif
+            BakeVolume->BuildHeatPreviewFromField();
+            BakeVolume->MarkPackageDirty();
+        }
+#endif
+        BakeVolume = nullptr;
+        StartNextBake(); 
+    }
+}
+

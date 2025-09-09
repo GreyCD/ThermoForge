@@ -44,6 +44,7 @@ struct FThermoForgeGridHit
     float CurrentTempC = 0.f;
 };
 
+DECLARE_MULTICAST_DELEGATE_OneParam(FThermoBakeProgress, float /*Progress01*/);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FThermoSourcesChanged);
 
 UCLASS()
@@ -60,6 +61,7 @@ public:
     void UnregisterSource(UThermoForgeSourceComponent* Source);
     void MarkSourceDirty(UThermoForgeSourceComponent* Source);
     int32 GetSourceCount() const;
+    void StartNextBake();
     void GetAllSources(TArray<UThermoForgeSourceComponent*>& OutSources) const;
 
     UPROPERTY(BlueprintAssignable, Category="Thermo Forge")
@@ -92,8 +94,29 @@ public:
     UFUNCTION(BlueprintCallable, Category="ThermoForge|Query")
     bool FindBakedExtremeNear(const FVector& CenterWS, float RadiusCm, bool bHottest, FThermoForgeGridHit& OutHit, const FDateTime& QueryTimeUTC) const;
 
+    // Progress
+
+    void TickBake();
+    TWeakObjectPtr<AThermoForgeVolume> BakeVolume;
+    FIntVector BakeDim;
+    int32 BakeTotalCells = 0;
+    int32 BakeProcessed  = 0;
+
+    float BakeCell = 0.f;
+    FTransform BakeFrame;
+    int32 Bake_ix0, Bake_iy0, Bake_iz0;
+
+    TArray<float> BakeSky, BakeWall, BakeIndoor;
+    TArray<FVector> BakeHemiDirs;
+
+    FTimerHandle BakeTimerHandle;
+
+    FThermoBakeProgress OnBakeProgress;
+
     // Access Settings over subsystem also
     const UThermoForgeProjectSettings* GetSettings() const;
+
+    TArray<TWeakObjectPtr<AThermoForgeVolume>> BakeQueue;
 
 private:
     // helpers
@@ -115,4 +138,6 @@ private:
 
     // data
     TSet<TWeakObjectPtr<UThermoForgeSourceComponent>> SourceSet;
+
+    FVector BakeFieldOriginWS;
 };

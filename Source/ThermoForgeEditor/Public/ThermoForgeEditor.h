@@ -9,6 +9,14 @@ public:
     virtual void StartupModule() override;
     virtual void ShutdownModule() override;
 
+    /**  State for progress popup */
+    TSharedPtr<SWindow> BakeProgressWindow;
+    TSharedPtr<class SProgressBar> BakeProgressBar;
+    
+    void ShowBakeProgressPopup();
+    void UpdateBakeProgress(float InProgress);
+    void HideBakeProgressPopup();
+
 private:
 
     /** Function to spawn the tab */
@@ -28,7 +36,7 @@ private:
     FReply OnAddHeatSourceClicked();
     FReply OnKickstartSamplingClicked();
     FReply OnShowAllPreviewsClicked();
-    FReply OnOpenSettingsClicked(); 
+    FReply OnOpenSettingsClicked();
     FReply OnHideAllPreviewsClicked();
     FReply OnSetMeshInsulatedClicked();
     TSharedRef<SWidget> MakeToolButton(const FString& Label, const FName& Icon, FOnClicked OnClicked);

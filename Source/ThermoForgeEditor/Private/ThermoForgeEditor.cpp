@@ -33,6 +33,7 @@
 #include "ISettingsModule.h"
 #include "ThermoForgeProjectSettings.h"
 #include "Components/InstancedStaticMeshComponent.h"
+#include "Widgets/Notifications/SProgressBar.h"
 
 #define LOCTEXT_NAMESPACE "FThermoForgeEditorModule"
 
@@ -360,6 +361,16 @@ FReply FThermoForgeEditorModule::OnKickstartSamplingClicked()
 
     if (UThermoForgeSubsystem* Sub = World->GetSubsystem<UThermoForgeSubsystem>())
     {
+        ShowBakeProgressPopup();
+
+        Sub->OnBakeProgress.AddLambda([this](float P)
+        {
+            AsyncTask(ENamedThreads::GameThread, [this, P]()
+            {
+                UpdateBakeProgress(P);
+            });
+        });
+        
         Sub->KickstartSamplingFromVolumes(); // stub for now
         UE_LOG(LogTemp, Log, TEXT("[ThermoForge] KickstartSamplingFromVolumes() called."));
     }
@@ -481,3 +492,81 @@ FReply FThermoForgeEditorModule::OnOpenSettingsClicked()
     return FReply::Handled();
 }
 #undef LOCTEXT_NAMESPACE
+
+void FThermoForgeEditorModule::ShowBakeProgressPopup()
+{
+    if (BakeProgressWindow.IsValid())
+        return;
+
+    SAssignNew(BakeProgressBar, SProgressBar)
+        .Percent(0.f);
+
+    BakeProgressWindow = SNew(SWindow)
+        .Title(FText::FromString("ThermoForge Bake"))
+        .ClientSize(FVector2D(400, 100))
+        .SupportsMinimize(false)
+        .SupportsMaximize(false)
+        .IsTopmostWindow(true)
+        .SizingRule(ESizingRule::FixedSize)
+        [
+            SNew(SVerticalBox)
+            + SVerticalBox::Slot().Padding(10)
+            [
+                SNew(STextBlock).Text(FText::FromString("Baking Heat Fields..."))
+            ]
+            + SVerticalBox::Slot().Padding(10)
+            [
+                BakeProgressBar.ToSharedRef()
+            ]
+        ];
+
+    // Add the popup window
+    FSlateApplication::Get().AddWindow(BakeProgressWindow.ToSharedRef(), true);
+
+    // Bring popup in front of the main editor window
+    if (BakeProgressWindow.IsValid())
+    {
+        if (TSharedPtr<SWindow> Parent = FSlateApplication::Get().GetActiveTopLevelWindow())
+        {
+            TArray<TSharedRef<SWindow>> Windows;
+            Windows.Add(BakeProgressWindow.ToSharedRef());
+
+            FSlateApplication::Get().ArrangeWindowToFrontVirtual(Windows, Parent.ToSharedRef());
+        }
+    }
+}
+
+
+void FThermoForgeEditorModule::UpdateBakeProgress(float InProgress)
+{
+    if (BakeProgressBar.IsValid())
+    {
+        BakeProgressBar->SetPercent(InProgress);
+
+        // Force repaint so hover tooltips / fill update now
+        FSlateApplication::Get().GetRenderer()->FlushCommands();
+        FSlateApplication::Get().Tick();
+    }
+
+    if (InProgress >= 0.9f)
+    {
+        if (UThermoForgeSubsystem* Sub = GEditor->GetEditorWorldContext().World()->GetSubsystem<UThermoForgeSubsystem>())
+        {
+            if (Sub->BakeQueue.Num() == 0 && !Sub->BakeVolume.IsValid())
+            {
+                HideBakeProgressPopup();
+            }
+        }
+    }
+}
+
+
+void FThermoForgeEditorModule::HideBakeProgressPopup()
+{
+    if (BakeProgressWindow.IsValid())
+    {
+        FSlateApplication::Get().RequestDestroyWindow(BakeProgressWindow.ToSharedRef());
+        BakeProgressWindow.Reset();
+        BakeProgressBar.Reset();
+    }
+}

@@ -273,7 +273,7 @@ Demo material with custom data channels available under Resources **/Content/The
 
 ## Planned  Upcoming Features
 
-- Per-volume bake queues with progress bars.
+- ~~Per-volume bake queues with progress bars.~~
 - Time scrubber on the Heat Previews.
 - Thermal vision mode.
 
