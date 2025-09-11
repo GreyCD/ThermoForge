@@ -266,7 +266,6 @@ void UThermoForgeSubsystem::UpdateThermalProbesAndUpload(const FVector& CenterWS
         ProbesTex->AddressY = TA_Clamp;
         ProbesTex->SRGB = false;
         ProbesTex->Filter = TF_Bilinear;
-        ProbesTex->MipGenSettings = TMGS_NoMipmaps;
         ProbesTex->CompressionSettings = TC_HDR; // keep HDR linear
 #if WITH_EDITORONLY_DATA
         ProbesTex->MipLoadOptions = ETextureMipLoadOptions::AllMips; 
