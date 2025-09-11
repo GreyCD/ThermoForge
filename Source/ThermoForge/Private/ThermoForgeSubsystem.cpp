@@ -178,6 +178,124 @@ void UThermoForgeSubsystem::GetAllSources(TArray<UThermoForgeSourceComponent*>& 
             OutSources.Add(S);
 }
 
+static void TF_GenerateBlueNoiseSphere(TArray<FVector>& Out, int32 Count, float RadiusCm, uint32 Seed=1337u)
+{
+    Out.Reset(Count);
+    Out.Reserve(Count);
+
+    FRandomStream R(Seed);
+
+    const int32 DomeCount = Count * 3 / 4; 
+    const int32 ZCount    = Count - DomeCount;
+
+    // Hemisphere (upper half-sphere, Z ≥ 0)
+    for (int32 i=0; i<DomeCount; ++i)
+    {
+        const float k   = (i + 0.5f) / float(DomeCount);
+        const float phi = 2.f * PI * k * 1.61803398875f;
+        const float z   = FMath::FRandRange(0.f, 1.f);  // only upper half
+        const float r   = FMath::Sqrt(FMath::Max(0.f, 1.f - z*z));
+
+        FVector p(r * FMath::Cos(phi), r * FMath::Sin(phi), z);
+        p.Normalize();
+
+        const float u = R.FRand();
+        const float radius = FMath::Lerp(0.3f * RadiusCm, RadiusCm, FMath::Sqrt(u));
+
+        Out.Add(p * radius);
+    }
+
+    // Vertical stack (extra Z axis coverage)
+    for (int32 j=0; j<ZCount; ++j)
+    {
+        float z = FMath::Lerp(-1.f, 1.f, (j+0.5f) / float(ZCount));
+        FVector p(0, 0, z);
+        p.Normalize();
+
+        const float u = R.FRand();
+        const float radius = FMath::Lerp(0.3f * RadiusCm, RadiusCm, FMath::Sqrt(u));
+
+        Out.Add(p * radius);
+    }
+}
+
+void UThermoForgeSubsystem::UpdateThermalProbesAndUpload(const FVector& CenterWS, bool bRegeneratePoints)
+{
+    if (MaxProbes <= 0) return;
+
+    // 1) Ensure probe positions (relative to CenterWS)
+    if (bRegeneratePoints || ProbeOffsetsLS.Num() != MaxProbes)
+    {
+        TF_GenerateBlueNoiseSphere(ProbeOffsetsLS, MaxProbes, ProbeRadiusCm, /*Seed*/ 98761u);
+    }
+    NumProbes = ProbeOffsetsLS.Num();
+
+    // 2) Evaluate temperature at each probe
+    if (ProbePixels.Num() != NumProbes)
+    {
+        ProbePixels.SetNum(NumProbes);
+    }
+
+    // For Default expose these if you want control over it in blueprints or gameplay
+    const bool  bWinter     = false;
+    const float TimeHours   = 12.f;         // “reference” time
+    const float WeatherAlfa = 0.2f;         // clearer = lower alpha
+
+    for (int32 i=0; i<NumProbes; ++i)
+    {
+        const FVector P = CenterWS + ProbeOffsetsLS[i];
+
+        // Use your existing runtime composition (includes ambient + solar + sources + occlusion):
+        const float TempC = ComputeCurrentTemperatureAt(P, bWinter, TimeHours, WeatherAlfa);
+
+        // Pack as RGBA16F = (RelX, RelY, RelZ, TempC)
+        const FVector Rel = ProbeOffsetsLS[i]; // already relative to CenterWS
+        ProbePixels[i] = FFloat16Color(FLinearColor(Rel.X, Rel.Y, Rel.Z, TempC));
+    }
+
+    // 3) Ensure / update the transient 2D texture (width = NumProbes, height = 1)
+    const int32 W = NumProbes;
+    const int32 H = 1;
+
+    const EPixelFormat PF = PF_FloatRGBA;
+
+    if (!ProbesTex || ProbesTex->GetPixelFormat() != PF || ProbesTex->GetSizeX() != W || ProbesTex->GetSizeY() != H)
+    {
+        ProbesTex = UTexture2D::CreateTransient(W, H, PF);
+        ProbesTex->AddressX = TA_Clamp;
+        ProbesTex->AddressY = TA_Clamp;
+        ProbesTex->SRGB = false;
+        ProbesTex->Filter = TF_Bilinear;
+        ProbesTex->MipGenSettings = TMGS_NoMipmaps;
+        ProbesTex->CompressionSettings = TC_HDR; // keep HDR linear
+#if WITH_EDITORONLY_DATA
+        ProbesTex->MipLoadOptions = ETextureMipLoadOptions::AllMips; 
+#endif
+        ProbesTex->UpdateResource();
+    }
+
+    // 4) Upload pixel data
+    {
+        FTexture2DMipMap& Mip = ProbesTex->GetPlatformData()->Mips[0];
+        void* Data = Mip.BulkData.Lock(LOCK_READ_WRITE);
+        const size_t Bytes = size_t(W) * size_t(H) * sizeof(FFloat16Color);
+        FMemory::Memcpy(Data, ProbePixels.GetData(), Bytes);
+        Mip.BulkData.Unlock();
+        ProbesTex->UpdateResource();
+    }
+
+    // 5) How TO : Expose to material or you can do in blueprints access these variables. 
+    // A) If you have a post-process MID handy:
+    //    MID->SetTextureParameterValue("TF_ProbesTex", ProbesTex);
+    //    MID->SetScalarParameterValue("TF_NumProbes", float(NumProbes));
+    //    MID->SetScalarParameterValue("TF_KernelRadiusCm", KernelRadiusCm);
+    //    MID->SetVectorParameterValue("TF_CenterWS", FLinearColor(CenterWS));
+
+    // or B) If you use a Material Parameter Collection (MPC), set scalars/vectors there,
+    // and set the texture on your PP material instance.
+}
+
+
 // ---- physmat helpers ----
 static UPhysicalMaterial* TF_ResolvePhysicalMaterial(const FHitResult& Hit)
 {
@@ -625,6 +743,8 @@ void UThermoForgeSubsystem::CompactSources()
             }
         }
     }
+
+    UE_LOG(LogTemp, Log, TEXT("[ThermoForge] Compacted %d sources"), SourceSet.Num());
 }
 
 

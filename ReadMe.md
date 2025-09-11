@@ -61,6 +61,11 @@ Some examples of Thermo Forge plugin in action:
 |:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|
 | Dynamic Heat Reactive Material with Custom Data Channels driven the values around Thermo Forge HeatFX Component. Once it is attached the actor and material master is used, data channels drive heat aspects out of box. Lightweight usage and fully applicable to open worlds without custom gameplay logic. |
 
+
+|                                                                             <img src="Resources/Demo10.gif" width="800"/>                                                                             |
+|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|
+| Thermal Vision Post Process In  action. Demo material can be found under plugins resources, uses probe sampling  to achieve expected results, can be fully customised via c++ blueprints or material. |
+
 ## Installation
 <img src="Resources/SS1.jpeg" alt="plugin-thermo-forge" width="830"/>
 
@@ -122,6 +127,13 @@ Install it like any other Unreal Engine plugin.
     - Blueprint: Drag from Thermo Forge Subsystem to call query nodes   
     - C++: Include `ThermoForgeSubsystem.h` and use subsystem functions  
     - Use `OnSourcesChanged` delegate to react when new heat sources are added/removed
+
+- **Thermal Probes and Thermal Sampling**
+    - Thermal sampling for gameplay and tech art solvers are made on `UpdateThermalProbesAndUpload()` in subsystem
+    - You can directly call function from blueprints on tick to update probes when necessary
+    - A Thermal Vision Post Process is available under `Plugins/ThermoForge/Resources/ThermoForgeVisionPP_M`
+    - It uses probe sampling to achieve expected results, can be fully customised via c++ blueprints or material.
+    - Probe variables are defined in `ThermalVisionPostProcess.h` and exposed to blueprints, can be passed to materials as parameters.
 
 
 ### Thermo Forge Subsystem
@@ -274,8 +286,8 @@ Demo material with custom data channels available under Resources **/Content/The
 ## Planned  Upcoming Features
 
 - ~~Per-volume bake queues with progress bars.~~
+- ~~Thermal vision mode.~~
 - Time scrubber on the Heat Previews.
-- Thermal vision mode.
 
 ## License
 

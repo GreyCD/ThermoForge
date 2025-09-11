@@ -9,6 +9,14 @@ class AThermoForgeVolume;
 class UThermoForgeFieldAsset;
 class UThermoForgeProjectSettings;
 
+USTRUCT()
+struct FThermoProbe
+{
+    GENERATED_BODY()
+    FVector PosWS = FVector::ZeroVector;
+    float   TempC = 0.f;
+};
+
 // ---------- RESULT STRUCT ----------
 USTRUCT(BlueprintType)
 struct FThermoForgeGridHit
@@ -117,6 +125,31 @@ public:
     const UThermoForgeProjectSettings* GetSettings() const;
 
     TArray<TWeakObjectPtr<AThermoForgeVolume>> BakeQueue;
+
+    // Blue Noise Splat
+    UPROPERTY(EditAnywhere, Category="ThermoForge|Probes")
+    int32 MaxProbes = 1024;
+
+    UPROPERTY(EditAnywhere, Category="ThermoForge|Probes", meta=(ClampMin="100", ClampMax="50000"))
+    float ProbeRadiusCm = 400.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="ThermoForge|Probes")
+    float KernelRadiusCm = 150.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="ThermoForge|Probes")
+    TObjectPtr<UTexture2D> ProbesTex = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="ThermoForge|Probes")
+    TArray<FVector> ProbeOffsetsLS; // relative to CenterWS (in cm)
+
+    TArray<FFloat16Color> ProbePixels;
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="ThermoForge|Probes")
+    int32 NumProbes = 0;
+
+    UFUNCTION(BlueprintCallable, Category="ThermoForge|Probes")
+    void UpdateThermalProbesAndUpload(const FVector& CenterWS, bool bRegeneratePoints = false);
+
 
 private:
     // helpers
