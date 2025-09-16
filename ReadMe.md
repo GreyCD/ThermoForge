@@ -20,6 +20,8 @@ The system is baked and lightweight, relying on precomputed fields for efficienc
 
 Thermo Forge is still under development but has been proven stable in both open-world and smaller test environments. It has been validated with multiple overlapping volumes, dense grids, and complex level layouts. While experimental in nature, it is carefully designed, tested, and refined with the aid of AI supervision to ensure clarity, code quality, and reliability.
 
+A demo with plugin in action can be found here -> [Thermo Forge Demo UE5 Project](https://github.com/cem-akkaya/ThermoForgeDemo)
+
 If you have any bug or crash, please open an issue in the Github repo.
 If you have suggestions, questions or need help to use you can always contact [me](https://github.com/cem-akkaya)<br>
 
