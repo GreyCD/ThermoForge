@@ -68,6 +68,12 @@ Some examples of Thermo Forge plugin in action:
 |:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|
 | Thermal Vision Post Process In  action. Demo material can be found under plugins resources, uses probe sampling  to achieve expected results, can be fully customised via c++ blueprints or material. |
 
+
+|                                                    <img src="Resources/Demo11.gif" width="800"/>                                                    |
+|:---------------------------------------------------------------------------------------------------------------------------------------------------:|
+|Thermo Forge automatically partitions the landscape into climate zones using its hybrid baked-and-runtime temperature model. The Climate Sampling PCG node provides instant biome classification, with high-contrast debug colors exposing the thermal logic that drives world generation, AI behavior, and environmental systems.
+|
+
 ## Installation
 <img src="Resources/SS1.jpeg" alt="plugin-thermo-forge" width="830"/>
 
@@ -144,7 +150,7 @@ Install it like any other Unreal Engine plugin.
   - ComputeCurrentTemperatureAt(WorldPosition, bWinter, TimeHours, WeatherAlpha) to calculate exact temperature 
   - QueryNearestBakedGridPoint(WorldPosition, QueryTimeUTC) to get nearest baked cell info  
   - QueryNearestBakedGridPointNow(WorldPosition) for real-time queries 
-  - Subsystem also provides helper functions for occlusion, ambient rays, and data dumping
+  - Subsystem also provides helper functions for occlusion, ambient rays, data dumping and annual climate at location provided.
 
 <img src="Resources/SS3.jpeg" alt="plugin-thermo-forge" width="830"/>
 
@@ -188,14 +194,78 @@ Install it like any other Unreal Engine plugin.
   - Updates automatically as the owning actor or surrounding thermal field changes
   - Debug preview available through CPD defaults (in the component inspector)
 
-If you want component to directly write custom data channels, write Component Name and check the box.
-<img src="Resources/SS8.jpeg" alt="plugin-thermo-forge" width="830"/>
+## Climate Simulation & PCG Integration
 
-If you want to write custom data channels, in blueprint and material setup you can define the channels you want to write.
-<img src="Resources/SS9.jpeg" alt="plugin-thermo-forge" width="830"/>
+Thermo Forge includes a lightweight climate classification system that determines large-scale biome behavior such as desert, arctic, tropical, cold, warm, and temperate zones. This system blends global climate rules with Thermo Forge’s baked temperature fields and runtime temperature sampling.
 
-Demo material with custom data channels available under Resources **/Content/ThermoForgeFX_M**
-<img src="Resources/SS10.jpeg" alt="plugin-thermo-forge" width="830"/>
+### Climate Model
+
+Each world position is assigned a ClimateType, determined from:
+- Annual temperature curve (season + day/night cycle)
+- Altitude lapse rate and sea-level baseline
+- Weather and solar gain
+- Baked Thermo Forge temperature volumes (if present)
+- Runtime temperature sources (fires, vents, effects)
+- Global fallback climate model configured in Project Settings
+
+### Supported climate enums:
+
+* Desert
+* Warm
+* Temperate
+* Cold
+* Arctic
+* Tropical
+
+### Subsystem Queries For Climate
+
+The Thermo Forge World Subsystem provides new APIs to classify climate at any world position:
+
+`GetClimateTypeAtPoint(const FVector& WorldPos);`
+`GetClimateAtPoint(const FVector& WorldPos) ;`
+
+These functions:
+1. Find the nearest Thermo Forge Volume if one exists.
+2. Sample baked temperature at that point.
+3. Apply altitude, season, weather, and time-of-day adjustments.
+4. Fall back to the global climate model if no volume is available.
+
+This enables automated biome categorization, procedural world generation, environmental logic, and gameplay systems that depend on large-scale temperature patterns.
+
+### PCG Integration – Sample Climate Node
+
+Thermo Forge adds a custom PCG node called “Sample Climate”.
+
+<img src="Resources/SS13.jpeg" alt="plugin-thermo-forge" width="830"/>
+
+Features:
+- Works with any spatial input (points, surfaces, meshes)
+- Computes ClimateType per point
+- Writes metadata attribute: ClimateType (int32)
+- Automatically allocates metadata entries (required for UE 5.6)
+- Supports optional debug colors on points for easy visualization of climate boundaries
+
+Default debug colors:
+Arctic = Blue
+Cold = Cyan
+Temperate = Green
+Warm = Yellow
+Desert = Red
+Tropical = Orange
+
+The ClimateType metadata can be used in:
+- PCG Filters
+- Biome spawning rules
+- PCG graph logic
+- Blueprint or C++ world generation systems
+
+Example Uses
+
+- Automatic biome placement across large landscapes (arctic mountains, temperate valleys, warm coasts, desert basins).
+- Climate-based spawning of foliage, rocks, decals, wildlife, and gameplay objects.
+- Procedural placement of weather effects and environmental VFX.
+- Survival mechanics driven by climate and temperature.
+- AI systems reacting to climate zones or using climate for pathfinding or behavior decisions.
 
 ## What can I do with this plugin?
 
