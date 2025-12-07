@@ -31,6 +31,7 @@ If you want to contribute, feel free to create a pull request.
 
 - Volume-based thermal field baking (sky view, wall permeability, indoor proxy).
 - Climate simulation with diurnal cycles, seasons, altitude lapse rate, and weather scaling.
+- Annual climate model approximations for Desert, Tropic, Arctic, Temperate zones unlocking dynamic living world creation.
 - Heat Source components (point or box) with configurable intensity, falloff, and attenuation.
 - Query functions for current temperature at any world position with given UTC.
 - EQS and Thermal Events for AI.
@@ -69,10 +70,9 @@ Some examples of Thermo Forge plugin in action:
 | Thermal Vision Post Process In  action. Demo material can be found under plugins resources, uses probe sampling  to achieve expected results, can be fully customised via c++ blueprints or material. |
 
 
-|                                                    <img src="Resources/Demo11.gif" width="800"/>                                                    |
-|:---------------------------------------------------------------------------------------------------------------------------------------------------:|
-|Thermo Forge automatically partitions the landscape into climate zones using its hybrid baked-and-runtime temperature model. The Climate Sampling PCG node provides instant biome classification, with high-contrast debug colors exposing the thermal logic that drives world generation, AI behavior, and environmental systems.
-|
+|                                                                                                                                          <img src="Resources/Demo11.gif" width="800"/>                                                                                                                                           |
+|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|
+|Thermo Forge automatically partitions the landscape into climate zones using its hybrid baked-and-runtime temperature model. The Climate Sampling PCG node provides instant biome classification, with high-contrast debug colors exposing the thermal logic that drives world generation, AI behavior, and environmental systems.|
 
 ## Installation
 <img src="Resources/SS1.jpeg" alt="plugin-thermo-forge" width="830"/>
@@ -275,6 +275,7 @@ Example Uses
 - **Source/field synergies** : Use baked permeability for insulation gameplay: reduced heat damage behind thick walls, or explosive blasts venting down leaky corridors.
 - **Elemental weapons** : Fire weapons spawn short-lived +°C bubbles, cryo weapons spawn −°C fields that suppress enemy thermal sense and fire-rate. Mods can alter falloff (Linear / None / InverseSquare) to reshape crowd control.
 - **Faction and creature traits** : “Heat predators” track targets through smoke but struggle in uniformly hot rooms, while other AI can use thermal cues as senses you can disrupt.
+- **Living World** : Generate climate-driven ecosystems—dry biomes grow sparse, sun-baked grasses while colder regions shift toward moss, frost flowers, or dormant undergrowth. PCG rules can swap foliage sets, ambient wildlife, and biome actors automatically based on sampled climate and temperature fields.
 
 ## FAQ
 
