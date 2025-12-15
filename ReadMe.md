@@ -1,7 +1,7 @@
 ﻿# Thermo Forge Unreal Plugin
 
 [![Plugin version number](https://img.shields.io/github/v/release/cem-akkaya/ThermoForge?label=Version)](https://github.com/cem-akkaya/ThermoForge/releases/latest)
-[![Unreal Engine Supported Versions](https://img.shields.io/badge/Unreal_Engine-5.6-9455CE?logo=unrealengine)](https://github.com/cem-akkaya/ThermoForge/releases)
+[![Unreal Engine Supported Versions](https://img.shields.io/badge/Unreal_Engine-5.6_%7C_5.7-9455CE?logo=unrealengine)](https://github.com/cem-akkaya/ThermoForge/releases)
 [![License](https://img.shields.io/github/license/cem-akkaya/ThermoForge)](LICENSE)
 [![Actively Maintained](https://img.shields.io/badge/Maintenance%20Level-Actively%20Maintained-green.svg)](https://gist.github.com/cheerfulstoic/d107229326a01ff0f333a1d3476e068d)
 
@@ -242,7 +242,7 @@ Features:
 - Works with any spatial input (points, surfaces, meshes)
 - Computes ClimateType per point
 - Writes metadata attribute: ClimateType (int32)
-- Automatically allocates metadata entries (required for UE 5.6)
+- Automatically allocates metadata entries 
 - Supports optional debug colors on points for easy visualization of climate boundaries
 
 Default debug colors:
